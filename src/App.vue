@@ -1,5 +1,6 @@
 <template>
   <div id="app">
+    <div id="overlay" v-show="showOverlay"></div>
     <header>
       <span>Mortgage Estimator</span>
     </header>
@@ -35,8 +36,12 @@ export default {
     showHistory () {
       return !!Object.keys(this.history).length
     },
+    showOverlay () {
+      return !this.user
+    },
     ...mapState([
-      'history'
+      'history',
+      'user'
     ])
   }
 }
@@ -85,5 +90,17 @@ legend {
 
 input[type=number] {
   text-align: right;
+}
+
+#overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  background-color: rgba(0,0,0,0.75);
+
+  height: 100%;
+  width: 100%;
+
+  z-index: 9999;
 }
 </style>

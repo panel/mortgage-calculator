@@ -5,6 +5,7 @@
               <th>Name</th>
               <th>Sale Price</th>
               <th>Monthly Payment</th>
+              <th>Created By</th>
               <th></th>
           </tr>
        </thead>
@@ -14,6 +15,7 @@
                 <td v-else>{{ item.scenarioName }}</td>
                 <td>{{ item.salePrice | currency }}</td>
                 <td>{{ item.monthlyPayment | currency }}</td>
+                <td>{{ item.displayName }}</td>
                 <td>
                     <div class="btn-group">
                         <button class="btn btn-outline-success btn-sm" :id="item.scenarioName" @click="load">Load</button>
@@ -42,7 +44,7 @@ export default {
       this.$store.commit('load', this.history[event.target.id])
     },
     remove (event) {
-      this.$store.commit('remove', event.target.id)
+      this.$store.commit('remove', { scenarioName: event.target.id })
     }
   }
 }

@@ -3,10 +3,19 @@
 import Vue from 'vue'
 import Vuex from 'vuex'
 import { format } from 'currency-formatter'
+import firebaseConfig from '../.env.json'
+import defaultState from './defaultState.json'
+import * as firebase from 'firebase'
+
 import App from './App'
 import 'bootstrap/dist/css/bootstrap.min.css'
 
 const K = 10 ** 3
+const provider = new firebase.auth.GoogleAuthProvider()
+
+firebase.initializeApp(firebaseConfig)
+
+const scenariosRef = firebase.database().ref('/scenarios')
 
 Vue.config.productionTip = false
 Vue.use(Vuex)
@@ -23,17 +32,27 @@ function interestMultiplier (interestRate) {
   return Math.pow(1 + (interestRate), 360)
 }
 
-const persistedState = JSON.parse(localStorage.getItem('state'))
-const initialState = persistedState || {
-  primaryDownPayment: 30 * K,
-  giftDownPayment: 15 * K,
-  savings: 65 * K,
-  illiquidAssets: 35 * K,
-  salePrice: 645 * K,
-  interestRate: 0.0425,
-  scenarioName: '',
-  listingLink: '',
-  history: {}
+function writeScenario ({ data, isNew }) {
+  let key = data.key
+
+  if (!key) {
+    key = firebase.database().ref().child('posts').push().key
+    data.key = key
+  }
+
+  firebase.database().ref(`scenarios/${key}`).set(data)
+
+  return key
+}
+
+let initialState
+
+try {
+  const {user, history, ...persistedState} = JSON.parse(localStorage.getItem('state'))
+  initialState = persistedState || defaultState
+  initialState.history = []
+} catch (e) {
+  initialState = defaultState
 }
 
 const store = new Vuex.Store({
@@ -82,9 +101,20 @@ const store = new Vuex.Store({
       localStorage.setItem('state', JSON.stringify(state))
     },
     save (state) {
-      const { history, ...everythingElse } = state
+      const { history, user, ...everythingElse } = state
+      const isNew = !history[state.scenarioName]
       everythingElse.monthlyPayment = this.getters.monthlyPayment
+      everythingElse.key = writeScenario({
+        data: everythingElse,
+        isNew
+      })
+
       Vue.set(state.history, state.scenarioName, everythingElse)
+
+      localStorage.setItem('state', JSON.stringify(state))
+    },
+    upsert (state, { data }) {
+      Vue.set(state.history, data.scenarioName, data)
       localStorage.setItem('state', JSON.stringify(state))
     },
     load (state, { monthlyPayment, ...everythingElse }) {
@@ -93,12 +123,63 @@ const store = new Vuex.Store({
       }
       localStorage.setItem('state', JSON.stringify(state))
     },
-    remove (state, scenarioName) {
+    remove (state, { scenarioName, localOnly }) {
       const history = Object.assign({}, state.history)
+      const { key } = history[scenarioName]
+
+      if (!localOnly) {
+        firebase.database().ref(`scenarios/${key}`).remove()
+      }
+
       delete history[scenarioName]
       Vue.set(state, 'history', history)
       localStorage.setItem('state', JSON.stringify(state))
+    },
+    login (state, { user }) {
+      Vue.set(state, 'user', user)
+      Vue.set(state, 'displayName', user.displayName)
     }
+  }
+})
+
+firebase.auth().signInWithPopup(provider).then(result => {
+  // The signed-in user info.
+  const user = result.user
+  store.commit('login', { user })
+
+  return firebase.database().ref('scenarios').once('value')
+}).then(snapshot => {
+  const scenarios = Object.values(snapshot.val()) || []
+  scenarios.forEach(data => store.commit('upsert', { data }))
+}).catch(error => {
+  console.log(error)
+})
+
+scenariosRef.on('child_added', snapshot => {
+  const data = snapshot.val()
+  if (data.scenarioName) {
+    store.commit('upsert', { data })
+  }
+})
+
+scenariosRef.on('child_changed', snapshot => {
+  const data = snapshot.val()
+  if (data.scenarioName) {
+    store.commit('upsert', { data })
+  }
+})
+
+scenariosRef.on('child_moved', snapshot => {
+  const data = snapshot.val()
+  if (data.scenarioName) {
+    store.commit('upsert', { data })
+  }
+})
+
+scenariosRef.on('child_removed', snapshot => {
+  const data = snapshot.val()
+  if (data.scenarioName) {
+    store.commit('remove', { localOnly: true, scenarioName: data.scenarioName })
   }
 })
 
